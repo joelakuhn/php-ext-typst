@@ -1,0 +1,23 @@
+[package]
+name = "php-ext-typst"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ext-php-rs = "0.10.1"
+typst = { git = "https://github.com/typst/typst" }
+typst-library = { git = "https://github.com/typst/typst" }
+comemo = "*"
+once_cell = "*"
+memmap2 = "*"
+walkdir = "*"
+dirs = "*"
+serde_json = "*"
+
+[profile.release]
+strip = "debuginfo"
