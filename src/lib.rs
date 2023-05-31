@@ -332,8 +332,6 @@ impl Typst {
             None => false,
         };
 
-        println!("{:?}", real_use_headers);
-
         self.vars.insert(key, csv_to_typst(&value, real_delimiter, real_use_headers));
     }
 
