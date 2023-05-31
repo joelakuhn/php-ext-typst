@@ -188,6 +188,55 @@ fn zval_to_typst(value: &Zval) -> Value {
     }
 }
 
+fn csv_to_typst(csv: &String, delimiter: u8, use_headers: bool) -> Value {
+    let mut builder = csv::ReaderBuilder::new();
+    builder.has_headers(use_headers);
+    builder.delimiter(delimiter);
+
+    let mut reader = builder.from_reader(csv.as_bytes());
+
+    if use_headers {
+        let mut array = typst::eval::Array::new();
+        let headers = match reader.headers() {
+            Ok(header_record) => header_record.into_iter().map(|r|
+                match String::from_utf8(r.as_bytes().into()) {
+                    Ok(h) => h,
+                    _ => String::from(""),
+                }
+            ).collect(),
+            _ => vec![String::from("")],
+        };
+
+        for (_line, result) in reader.records().enumerate() {
+            match result {
+                Ok(row) => {
+                    let cells : Vec<Value> = row.into_iter().map(|f| Value::Str(f.into())).collect();
+                    let dict = Value::Dict(cells.into_iter().zip(&headers).into_iter().map(|(cell, header)| {
+                        (header.to_owned().into(), cell)
+                    }).collect());
+                    array.push(dict);
+                }
+                _ => {}
+            }
+        }
+        return Value::Array(array);
+    }
+    else {
+        let mut array = typst::eval::Array::new();
+
+        for (_line, result) in reader.records().enumerate() {
+            match result {
+                Ok(row) => {
+                    let cells = row.into_iter().map(|f| Value::Str(f.into())).collect();
+                    array.push(Value::Array(cells));
+                }
+                _ => {}
+            }
+        }
+        return Value::Array(array);
+    }
+}
+
 // DIAGNOSTICS
 
 fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -> String {
@@ -267,6 +316,25 @@ impl Typst {
 
     fn json(&mut self, key: String, value: String) {
         self.json.insert(key, value);
+    }
+
+    fn csv(&mut self, key: String, value: String, delimiter: Option<String>, use_headers: Option<bool>) {
+        let real_delimiter = match delimiter {
+            Some(d) => match d.as_bytes().get(0) {
+                Some(b) => b.to_owned(),
+                None => 0x2cu8,
+            }
+            None => 0x2cu8,
+        };
+
+        let real_use_headers = match use_headers {
+            Some(u) => u,
+            None => false,
+        };
+
+        println!("{:?}", real_use_headers);
+
+        self.vars.insert(key, csv_to_typst(&value, real_delimiter, real_use_headers));
     }
 
     fn var(&mut self, key: String, value: &Zval) {
