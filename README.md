@@ -61,7 +61,7 @@ $services = [
     (object)[ 'title' => 'Example Service 2', 'rate' => 125, 'quantity' => 2 ],
 ];
 
-$builder = new TypstBuilder(file_get_contents("./invoice.typ"));
+$builder = new Typst(file_get_contents("./invoice.typ"));
 $builder->var('invoice_num', $invoice_num);
 $builder->var('client', $client);
 $builder->var('services', $services);

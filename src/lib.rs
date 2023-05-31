@@ -32,7 +32,7 @@ struct PHPWorld {
 }
 
 impl PHPWorld {
-    fn new(builder: &TypstBuilder) -> Self {
+    fn new(builder: &Typst) -> Self {
         let mut fontsearcher = FontSearcher::new();
         fontsearcher.search_system();
 
@@ -91,7 +91,7 @@ impl World for PHPWorld {
 
 // HELPERS
 
-fn make_library(builder: &TypstBuilder) -> Library {
+fn make_library(builder: &Typst) -> Library {
     let mut lib = typst_library::build();
     let scope = lib.global.scope_mut();
 
@@ -245,7 +245,7 @@ fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -
 // MODULE
 
 #[php_class]
-pub struct TypstBuilder {
+pub struct Typst {
     body: String,
     json: HashMap<String, String>,
     vars: HashMap<String, Value>,
