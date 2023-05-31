@@ -38,7 +38,7 @@ impl PHPWorld {
 
         Self {
             library: Prehashed::new(make_library(builder)),
-            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new(""), builder.body.to_owned())),
+            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new(""), builder.body.as_ref().unwrap().to_owned())),
             book: Prehashed::new(fontsearcher.book),
             fonts: fontsearcher.fonts,
         }
@@ -246,19 +246,23 @@ fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -
 
 #[php_class]
 pub struct Typst {
-    body: String,
+    body: Option<String>,
     json: HashMap<String, String>,
     vars: HashMap<String, Value>,
 }
 
 #[php_impl(rename_methods = "none")]
-impl TypstBuilder {
-    fn __construct(body: String) -> Self {
+impl Typst {
+    fn __construct(body: Option<String>) -> Self {
         Self {
             body: body,
             json: HashMap::new(),
             vars: HashMap::new(),
         }
+    }
+
+    fn body(&mut self, body: String) {
+        self.body = Some(body);
     }
 
     fn json(&mut self, key: String, value: String) {
@@ -272,6 +276,10 @@ impl TypstBuilder {
     fn compile(&mut self) -> PhpResult<Binary<u8>> {
         let world = PHPWorld::new(self);
 
+        if !self.body.is_some() {
+            return Err(PhpException::default(String::from("No body for typst compiler")));
+        }
+
         match typst::compile(&world) {
             Ok(document) => {
                 let buffer = typst::export::pdf(&document);
@@ -279,7 +287,7 @@ impl TypstBuilder {
             }
             Err(errors) => {
                 Err(PhpException::new(
-                    get_error_message(&world, &self.body, &errors),
+                    get_error_message(&world, &self.body.as_ref().unwrap(), &errors),
                     8,
                     ext_php_rs::zend::ce::exception(),
                 ))
