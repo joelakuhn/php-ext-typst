@@ -59,7 +59,7 @@ impl World for PHPWorld {
     }
 
     fn resolve(&self, _path: &Path) -> FileResult<SourceId> {
-        FileResult::Ok(SourceId::from_u16(0u16))
+        FileResult::Err(FileError::AccessDenied)
     }
 
     fn source(&self, _id: SourceId) -> &Source {
