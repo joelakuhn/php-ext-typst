@@ -23,6 +23,36 @@ Check `php-config` to locate the `--extension-dir` where the built extension sho
 
 You can test the plugin with the PHP cli by adding the flag `-d extension=<path to extension>`.
 
+## API
+
+The `Typst` class is used to build the compiler environment, which includes the template body and all variables passed to the compiler.
+
+```php
+class Typst {
+    // Creates a Typst class with an optional body.
+    public function __construct(?string $body = null);
+
+    // Set or overwrite the typst template body.
+    public function body(string $body);
+
+    // Set a json-encoded variable in the typst environment.
+    public function json(string $key, string $value);
+
+    // Set a csv-encoded variable in the typst environment.
+    // If $use_headers is false, the typst variable will be an array of arrays.
+    // If $use_headers is true, the typst variable will be an array of dict, using the headers as keys.
+    public function csv(string $key, string $value, string $delimiter = ',', bool $use_headers = false);
+
+    // Set a php variable in the typst environment.
+    public function var(string $key, mixed $value);
+
+    // Compile the current environment to PDF.
+    // This will return a binary string on success or null on error.
+    // This function can throw an Error on compilation failure.
+    public function compile(): ?string;
+}
+```
+
 ## Example
 
 ```typst
