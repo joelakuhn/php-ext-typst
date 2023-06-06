@@ -108,3 +108,6 @@ catch (Exception $e) {
 }
 ```
 
+## File System
+
+For security, the extension does not allow reading arbitrary files from the file system. This means that typst functions like `json` and `csv` will not load data. However, these functions are reproduced through the extension, so you are still able to load files from PHP and pass them to the compiler.
