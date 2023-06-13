@@ -6,11 +6,14 @@ use std::fs;
 use ext_php_rs::flags::DataType;
 use typst::eval::{ Library, Datetime };
 use typst::diag::{ FileResult, FileError, SourceError };
+use typst::geom::{RgbaColor, LumaColor};
 use typst::syntax::{ Source, SourceId };
 use typst::font::{ Font, FontBook };
 use typst::util::Buffer;
 use typst::eval::Value;
 use typst::World;
+
+use typst_library::prelude::CmykColor;
 
 use comemo::Prehashed;
 
@@ -170,9 +173,33 @@ fn zval_to_typst(value: &Zval) -> Value {
         }
         DataType::Object(_) => {
             let obj = value.object().unwrap();
-            match obj.get_properties() {
-                Ok(props) => ztable_to_typst(props),
-                _ => Value::None
+            let class_name =  obj.get_class_name().unwrap_or(String::from(""));
+            if class_name.as_str() == "TypstCMYK" {
+                Value::Color(CmykColor::new(
+                    obj.get_property::<u8>("c").unwrap(),
+                    obj.get_property::<u8>("m").unwrap(),
+                    obj.get_property::<u8>("y").unwrap(),
+                    obj.get_property::<u8>("k").unwrap(),
+                ).into())
+            }
+            else if class_name.as_str() == "TypstRGBA" {
+                Value::Color(RgbaColor::new(
+                    obj.get_property::<u8>("r").unwrap(),
+                    obj.get_property::<u8>("g").unwrap(),
+                    obj.get_property::<u8>("b").unwrap(),
+                    obj.get_property::<u8>("a").unwrap(),
+                ).into())
+            }
+            else if class_name.as_str() == "TypstLuma" {
+                Value::Color(LumaColor::new(
+                    obj.get_property::<u8>("luma").unwrap(),
+                ).into())
+            }
+            else {
+                match obj.get_properties() {
+                    Ok(props) => ztable_to_typst(props),
+                    _ => Value::None
+                }
             }
         },
         DataType::Void => Value::None,
@@ -294,6 +321,41 @@ fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -
 // MODULE
 
 #[php_class]
+#[allow(dead_code)]
+pub struct TypstCMYK {
+    #[prop]
+    pub c: u8,
+    #[prop]
+    pub m: u8,
+    #[prop]
+    pub y: u8,
+    #[prop]
+    pub k: u8,
+}
+
+#[php_class]
+#[allow(dead_code)]
+pub struct TypstRGBA {
+    #[prop]
+    pub r: u8,
+    #[prop]
+    pub g: u8,
+    #[prop]
+    pub b: u8,
+    #[prop]
+    pub a: u8,
+}
+
+#[php_class]
+#[allow(dead_code)]
+pub struct TypstLuma {
+    #[prop]
+    pub luma: u8,
+}
+
+
+
+#[php_class]
 pub struct Typst {
     body: Option<String>,
     json: HashMap<String, String>,
@@ -359,6 +421,18 @@ impl Typst {
                 ))
             }
         }
+    }
+
+    fn cmyk(c: u8, m: u8, y: u8, k: u8) -> TypstCMYK {
+        TypstCMYK { c, m, y, k }
+    }
+
+    fn rgba(r: u8, g: u8, b: u8, a: Option<u8>) -> TypstRGBA {
+        TypstRGBA { r, g, b, a: a.unwrap_or(255) }
+    }
+
+    fn luma(luma: u8) -> TypstLuma {
+        TypstLuma { luma }
     }
 }
 
