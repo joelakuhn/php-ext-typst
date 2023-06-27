@@ -173,30 +173,23 @@ fn zval_to_typst(value: &Zval) -> Value {
         }
         DataType::Object(_) => {
             let obj = value.object().unwrap();
-            let class_name =  obj.get_class_name().unwrap_or(String::from(""));
-            if class_name.as_str() == "TypstCMYK" {
-                Value::Color(CmykColor::new(
+            match obj.get_class_name().unwrap_or(String::from("")).as_str() {
+                "TypstCMYK" => Value::Color(CmykColor::new(
                     obj.get_property::<u8>("c").unwrap(),
                     obj.get_property::<u8>("m").unwrap(),
                     obj.get_property::<u8>("y").unwrap(),
                     obj.get_property::<u8>("k").unwrap(),
-                ).into())
-            }
-            else if class_name.as_str() == "TypstRGBA" {
-                Value::Color(RgbaColor::new(
+                ).into()),
+                "TypstRGBA" => Value::Color(RgbaColor::new(
                     obj.get_property::<u8>("r").unwrap(),
                     obj.get_property::<u8>("g").unwrap(),
                     obj.get_property::<u8>("b").unwrap(),
                     obj.get_property::<u8>("a").unwrap(),
-                ).into())
-            }
-            else if class_name.as_str() == "TypstLuma" {
-                Value::Color(LumaColor::new(
+                ).into()),
+                "TypstLuma" => Value::Color(LumaColor::new(
                     obj.get_property::<u8>("luma").unwrap(),
-                ).into())
-            }
-            else {
-                match obj.get_properties() {
+                ).into()),
+                _ => match obj.get_properties() {
                     Ok(props) => ztable_to_typst(props),
                     _ => Value::None
                 }
