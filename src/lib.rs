@@ -39,9 +39,14 @@ impl PHPWorld {
         let mut fontsearcher = FontSearcher::new();
         fontsearcher.search_system();
 
+        let body = match builder.body.as_ref() {
+            Some(body) => body,
+            None => "",
+        };
+
         Self {
             library: Prehashed::new(make_library(builder)),
-            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new(""), builder.body.as_ref().unwrap().to_owned())),
+            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new(""), body.to_owned())),
             book: Prehashed::new(fontsearcher.book),
             fonts: fontsearcher.fonts,
         }
