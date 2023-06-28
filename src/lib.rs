@@ -432,6 +432,12 @@ impl Typst {
     fn luma(luma: u8) -> TypstLuma {
         TypstLuma { luma }
     }
+
+    fn system_fonts(&self) -> Vec<String> {
+        PHPWorld::new(self).book().families().map(|(family, _info)|
+            String::from(family)
+        ).collect()
+    }
 }
 
 #[php_module]
