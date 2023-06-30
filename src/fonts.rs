@@ -68,7 +68,7 @@ impl FontSearcher {
     }
 
     /// Search for all fonts in a directory recursively.
-    fn search_dir(&mut self, path: impl AsRef<Path>) {
+    pub fn search_dir(&mut self, path: impl AsRef<Path>) {
         for entry in WalkDir::new(path)
             .follow_links(true)
             .sort_by(|a, b| a.file_name().cmp(b.file_name()))
@@ -86,7 +86,7 @@ impl FontSearcher {
     }
 
     /// Index the fonts in the file at the given path.
-    fn search_file(&mut self, path: impl AsRef<Path>) {
+    pub fn search_file(&mut self, path: impl AsRef<Path>) {
         let path = path.as_ref();
         if let Ok(file) = File::open(path) {
             if let Ok(mmap) = unsafe { Mmap::map(&file) } {

@@ -39,6 +39,12 @@ impl PHPWorld {
         let mut fontsearcher = FontSearcher::new();
         fontsearcher.search_system();
 
+        for font_path in &builder.fonts {
+            let path = Path::new(&font_path);
+            if path.is_dir() { fontsearcher.search_dir(&path); }
+            else if path.is_file() { fontsearcher.search_file(&path); }
+        }
+
         let body = match builder.body.as_ref() {
             Some(body) => body,
             None => "",
@@ -358,6 +364,7 @@ pub struct Typst {
     body: Option<String>,
     json: HashMap<String, String>,
     vars: HashMap<String, Value>,
+    fonts: Vec<String>,
 }
 
 #[php_impl(rename_methods = "none")]
@@ -367,6 +374,7 @@ impl Typst {
             body: body,
             json: HashMap::new(),
             vars: HashMap::new(),
+            fonts: vec![],
         }
     }
 
@@ -431,6 +439,19 @@ impl Typst {
 
     fn luma(luma: u8) -> TypstLuma {
         TypstLuma { luma }
+    }
+
+    fn register_font(&mut self, path: String) -> PhpResult<()> {
+        if !path.starts_with("./") {
+            Err(PhpException::default(String::from("Path must be relative.")))
+        }
+        else if path.contains("..") {
+            Err(PhpException::default(String::from("Path attempts to traverse parent.")))
+        }
+        else {
+            self.fonts.push(path);
+            Ok(())
+        }
     }
 
     fn system_fonts(&self) -> Vec<String> {
