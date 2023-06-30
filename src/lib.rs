@@ -325,7 +325,6 @@ fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -
 // MODULE
 
 #[php_class]
-#[allow(dead_code)]
 pub struct TypstCMYK {
     #[prop]
     pub c: u8,
@@ -338,7 +337,6 @@ pub struct TypstCMYK {
 }
 
 #[php_class]
-#[allow(dead_code)]
 pub struct TypstRGBA {
     #[prop]
     pub r: u8,
@@ -351,7 +349,6 @@ pub struct TypstRGBA {
 }
 
 #[php_class]
-#[allow(dead_code)]
 pub struct TypstLuma {
     #[prop]
     pub luma: u8,
