@@ -52,7 +52,7 @@ impl PHPWorld {
 
         Self {
             library: Prehashed::new(make_library(builder)),
-            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new(""), body.to_owned())),
+            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new("./::php_source::"), body.to_owned())),
             book: Prehashed::new(fontsearcher.book),
             fonts: fontsearcher.fonts,
         }
@@ -61,7 +61,7 @@ impl PHPWorld {
 
 impl World for PHPWorld {
     fn root(&self) -> &Path {
-        Path::new("")
+        Path::new(".")
     }
 
     fn library(&self) -> &Prehashed<Library> {
@@ -95,7 +95,15 @@ impl World for PHPWorld {
     }
 
     fn file(&self, path: &Path) -> FileResult<Buffer> {
-        read(path).map(Buffer::from).clone()
+        if path.components().any(|c| c.as_os_str() == "..") {
+            Err(FileError::AccessDenied)
+        }
+        else if !path.is_relative() {
+            Err(FileError::AccessDenied)
+        }
+        else {
+            read(path).map(Buffer::from)
+        }
     }
 
     fn today(&self, _offset:Option<i64>) -> Option<typst::eval::Datetime> {
