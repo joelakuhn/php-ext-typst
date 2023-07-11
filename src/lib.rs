@@ -88,7 +88,7 @@ impl World for PHPWorld {
         let slot = &self.fonts[id];
         slot.font
             .get_or_init(|| {
-                let data = self.file(&slot.path).ok()?;
+                let data = read(&slot.path).map(Buffer::from).ok()?;
                 Font::new(data, slot.index)
             })
             .clone()
