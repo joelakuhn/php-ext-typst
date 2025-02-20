@@ -3,10 +3,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::fs;
 
-use ext_php_rs::flags::DataType;
 use typst::ecow::EcoVec;
 use typst::Library;
-// use typst::eval::{ Library, Datetime };
 use typst::diag::{ FileError, FileResult, SourceDiagnostic };
 use typst::visualize::{Luma, Rgb};
 use typst::syntax::{ FileId, Source, Span, VirtualPath };
@@ -16,8 +14,9 @@ use typst::foundations::{Binding, Datetime, Value, Bytes};
 
 use typst::utils::LazyHash;
 
-use ext_php_rs::{prelude::*};
+use ext_php_rs::prelude::*;
 use ext_php_rs::binary::Binary;
+use ext_php_rs::flags::DataType;
 use ext_php_rs::types::{Zval, ZendHashTable};
 
 mod fonts;
