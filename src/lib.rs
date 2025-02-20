@@ -1,21 +1,20 @@
 #![cfg_attr(windows, feature(abi_vectorcall))]
 use std::collections::HashMap;
-use std::path::{ Path };
+use std::path::Path;
 use std::fs;
 
 use ext_php_rs::flags::DataType;
-use typst::eval::{ Library, Datetime };
-use typst::diag::{ FileResult, FileError, SourceError };
-use typst::geom::{RgbaColor, LumaColor};
-use typst::syntax::{ Source, SourceId };
-use typst::font::{ Font, FontBook };
-use typst::util::Buffer;
-use typst::eval::Value;
+use typst::ecow::EcoVec;
+use typst::Library;
+// use typst::eval::{ Library, Datetime };
+use typst::diag::{ FileError, FileResult, SourceDiagnostic, Warned };
+use typst::visualize::{Luma, Rgb};
+use typst::syntax::{ FileId, Source, Span, VirtualPath };
+use typst::text::{ Font, FontBook };
 use typst::World;
+use typst::foundations::{Binding, Datetime, Value, Bytes};
 
-use typst_library::prelude::CmykColor;
-
-use comemo::Prehashed;
+use typst::utils::LazyHash;
 
 use ext_php_rs::{prelude::*};
 use ext_php_rs::binary::Binary;
@@ -24,13 +23,14 @@ use ext_php_rs::types::{Zval, ZendHashTable};
 mod fonts;
 use fonts::FontSearcher;
 use fonts::FontSlot;
+use typst_pdf::PdfOptions;
 
 // WORLD
 
 struct PHPWorld {
-    library: Prehashed<Library>,
-    source: Box<Source>,
-    book: Prehashed<FontBook>,
+    library: LazyHash<Library>,
+    main: Source,
+    book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
 }
 
@@ -50,63 +50,57 @@ impl PHPWorld {
             None => "",
         };
 
+        let file_id = FileId::new(None, VirtualPath::new("./::php_source::"));
+
         Self {
-            library: Prehashed::new(make_library(builder)),
-            source: Box::new(Source::new(SourceId::from_u16(0u16), Path::new("./::php_source::"), body.to_owned())),
-            book: Prehashed::new(fontsearcher.book),
+            library: LazyHash::new(make_library(builder)),
+            main: Source::new(file_id, body.to_owned()),
+            book: LazyHash::new(fontsearcher.book),
             fonts: fontsearcher.fonts,
         }
     }
 }
 
 impl World for PHPWorld {
-    fn root(&self) -> &Path {
-        Path::new(".")
-    }
-
-    fn library(&self) -> &Prehashed<Library> {
+    fn library(&self) -> &LazyHash<Library> {
         &self.library
     }
 
-    fn main(&self) -> &Source {
-        &self.source
+    fn main(&self) -> FileId {
+        self.main.id()
     }
 
-    fn resolve(&self, _path: &Path) -> FileResult<SourceId> {
-        FileResult::Err(FileError::AccessDenied)
+    fn source(&self, _id: FileId) -> FileResult<Source> {
+        Ok(self.main.clone())
     }
 
-    fn source(&self, _id: SourceId) -> &Source {
-        &self.source
-    }
-
-    fn book(&self) -> &Prehashed<FontBook> {
+    fn book(&self) -> &LazyHash<FontBook> {
         &self.book
     }
 
     fn font(&self, id: usize) -> Option<Font> {
         let slot = &self.fonts[id];
-        slot.font
-            .get_or_init(|| {
-                let data = read(&slot.path).map(Buffer::from).ok()?;
-                Font::new(data, slot.index)
-            })
-            .clone()
+        let data = read(&slot.path).unwrap();
+        let bytes : Bytes = Bytes::new(data);
+        Font::new(bytes, slot.index)
     }
 
-    fn file(&self, path: &Path) -> FileResult<Buffer> {
-        if path.components().any(|c| c.as_os_str() == "..") {
-            Err(FileError::AccessDenied)
-        }
-        else if !path.is_relative() {
-            Err(FileError::AccessDenied)
-        }
-        else {
-            read(path).map(Buffer::from)
-        }
+    fn file(&self, path: FileId) -> FileResult<Bytes> {
+        // if path.components().any(|c| c.as_os_str() == "..") {
+        //     Err(FileError::AccessDenied)
+        // }
+        // else if !path.is_relative() {
+        //     Err(FileError::AccessDenied)
+        // }
+        // else {
+        
+            let data = read(path.vpath().as_rooted_path()).unwrap();
+            let bytes : Bytes = Bytes::new(data);
+            Ok(bytes)
+        // }
     }
 
-    fn today(&self, _offset:Option<i64>) -> Option<typst::eval::Datetime> {
+    fn today(&self, _offset:Option<i64>) -> Option<Datetime> {
         Some(Datetime::from_ymd(1970, 1, 1).unwrap())
     }
 }
@@ -114,19 +108,19 @@ impl World for PHPWorld {
 // HELPERS
 
 fn make_library(builder: &Typst) -> Library {
-    let mut lib = typst_library::build();
+    let mut lib = Library::builder().build();
     let scope = lib.global.scope_mut();
 
     for (k, v) in builder.json.to_owned().into_iter() {
         let serde_value: Result<serde_json::Value, _> = serde_json::from_slice(v.as_bytes());
         if serde_value.is_ok() {
             let typst_val = json_to_typst(serde_value.unwrap());
-            scope.define(k, typst_val);
+            scope.bind(k.into(), Binding::new(typst_val, Span::detached()));
         }
     }
 
     for (k, v) in builder.vars.to_owned().into_iter() {
-        scope.define(k, v);
+        scope.bind(k.into(), Binding::new(v, Span::detached()));
     }
 
     return lib;
@@ -165,10 +159,9 @@ fn json_to_typst(value: serde_json::Value) -> Value {
 
 fn ztable_to_typst(arr: &ZendHashTable) -> Value {
     Value::Dict(
-        arr.iter().map(|(n, s, v)| {
-            if s.is_some() { (s.unwrap(), v) }
-            else { (n.to_string(), v) }
-        }).map(|(s, v)| (s.into(), zval_to_typst(v))).collect()
+        arr.iter()
+        .map(|(key, v)| (key.to_string(), v))
+        .map(|(s, v)| (s.into(), zval_to_typst(v))).collect()
     )
 }
 
@@ -184,7 +177,7 @@ fn zval_to_typst(value: &Zval) -> Value {
         DataType::Array => {
             let arr = value.array().unwrap();
             if arr.has_numerical_keys() {
-                Value::Array(arr.iter().map(|(_, _, v)| v).map(zval_to_typst).collect())
+                Value::Array(arr.iter().map(|(_, v)| v).map(zval_to_typst).collect())
             }
             else {
                 ztable_to_typst(arr)
@@ -193,20 +186,21 @@ fn zval_to_typst(value: &Zval) -> Value {
         DataType::Object(_) => {
             let obj = value.object().unwrap();
             match obj.get_class_name().unwrap_or(String::from("")).as_str() {
-                "TypstCMYK" => Value::Color(CmykColor::new(
-                    obj.get_property::<u8>("c").unwrap(),
-                    obj.get_property::<u8>("m").unwrap(),
-                    obj.get_property::<u8>("y").unwrap(),
-                    obj.get_property::<u8>("k").unwrap(),
+                // "TypstCMYK" => Value::Color(Cmyk::new(
+                //     obj.get_property::<u8>("c").unwrap() as f32,
+                //     obj.get_property::<u8>("m").unwrap() as f32,
+                //     obj.get_property::<u8>("y").unwrap() as f32,
+                //     obj.get_property::<u8>("k").unwrap() as f32,
+                // ).into()),
+                "TypstRGBA" => Value::Color(Rgb::new(
+                    obj.get_property::<u8>("r").unwrap() as f32,
+                    obj.get_property::<u8>("g").unwrap() as f32,
+                    obj.get_property::<u8>("b").unwrap() as f32,
+                    obj.get_property::<u8>("a").unwrap() as f32,
                 ).into()),
-                "TypstRGBA" => Value::Color(RgbaColor::new(
-                    obj.get_property::<u8>("r").unwrap(),
-                    obj.get_property::<u8>("g").unwrap(),
-                    obj.get_property::<u8>("b").unwrap(),
-                    obj.get_property::<u8>("a").unwrap(),
-                ).into()),
-                "TypstLuma" => Value::Color(LumaColor::new(
-                    obj.get_property::<u8>("luma").unwrap(),
+                "TypstLuma" => Value::Color(Luma::new(
+                    obj.get_property::<u8>("luma").unwrap() as f32,
+                    1.0,
                 ).into()),
                 _ => match obj.get_properties() {
                     Ok(props) => ztable_to_typst(props),
@@ -235,7 +229,7 @@ fn csv_to_typst(csv: &String, delimiter: u8, use_headers: bool) -> Value {
     let mut reader = builder.from_reader(csv.as_bytes());
 
     if use_headers {
-        let mut array = typst::eval::Array::new();
+        let mut array = typst::foundations::Array::new();
         let headers = match reader.headers() {
             Ok(header_record) => header_record.into_iter().map(|r|
                 match String::from_utf8(r.as_bytes().into()) {
@@ -261,7 +255,7 @@ fn csv_to_typst(csv: &String, delimiter: u8, use_headers: bool) -> Value {
         return Value::Array(array);
     }
     else {
-        let mut array = typst::eval::Array::new();
+        let mut array = typst::foundations::Array::new();
 
         for (_line, result) in reader.records().enumerate() {
             match result {
@@ -278,53 +272,55 @@ fn csv_to_typst(csv: &String, delimiter: u8, use_headers: bool) -> Value {
 
 // DIAGNOSTICS
 
-fn get_error_message(world: &dyn World, body: &str, errors: &Vec<SourceError>) -> String {
+fn get_error_message(_world: &dyn World, _body: &str, errors: &EcoVec<SourceDiagnostic>) -> String {
     let mut full_message = String::from("");
     let mut first = true;
     for error in errors {
         if first { first = false }
         else { full_message.push_str("\n"); }
 
-        let range = error.range(world);
-        let body_bytes = body.as_bytes();
+        full_message.push_str(&error.message);
 
-        let mut line_number = 1;
-        for b in body_bytes[0..range.start].iter() {
-            if *b == 0x0A {
-                line_number += 1
-            }
-        }
+        // let range = error.(world);
+        // let body_bytes = body.as_bytes();
 
-        full_message.push_str(&format!("Typst error on line {}: ", line_number));
-        full_message.push_str(&String::from(error.message.to_owned()));
+        // let mut line_number = 1;
+        // for b in body_bytes[0..range.start].iter() {
+        //     if *b == 0x0A {
+        //         line_number += 1
+        //     }
+        // }
 
-        let mut start = range.start;
-        let mut end = range.end;
-        if start > 0 && body_bytes[start] == 0x0A {
-            start -= 1
-        }
-        while body_bytes[start] != 0x0A {
-            if start == 0 { break; }
-            start -= 1;
-        }
-        if start == 0x0A { start += 1 }
-        if end < body_bytes.len() && body_bytes[end] == 0x0A {
-            end += 1;
-        }
-        while end < body_bytes.len() && body_bytes[end] != 0x0A {
-            end += 1;
-        }
-        if end == 0x0A { end -= 1 }
+        // full_message.push_str(&format!("Typst error on line {}: ", line_number));
+        // full_message.push_str(&String::from(error.message.to_owned()));
+
+        // let mut start = range.start;
+        // let mut end = range.end;
+        // if start > 0 && body_bytes[start] == 0x0A {
+        //     start -= 1
+        // }
+        // while body_bytes[start] != 0x0A {
+        //     if start == 0 { break; }
+        //     start -= 1;
+        // }
+        // if start == 0x0A { start += 1 }
+        // if end < body_bytes.len() && body_bytes[end] == 0x0A {
+        //     end += 1;
+        // }
+        // while end < body_bytes.len() && body_bytes[end] != 0x0A {
+        //     end += 1;
+        // }
+        // if end == 0x0A { end -= 1 }
 
 
-        match String::from_utf8(body_bytes[start..end].into()) {
-            Ok(code) => {
-                full_message.push_str("\n");
-                full_message.push_str(&code);
+        // match String::from_utf8(body_bytes[start..end].into()) {
+        //     Ok(code) => {
+        //         full_message.push_str("\n");
+        //         full_message.push_str(&code);
 
-            }
-            _ => {},
-        }
+        //     }
+        //     _ => {},
+        // }
     }
     return full_message;
 }
@@ -419,14 +415,25 @@ impl Typst {
             return Err(PhpException::default(String::from("No body for typst compiler")));
         }
 
-        match typst::compile(&world) {
+        let Warned { output, warnings } = typst::compile(&world);
+        match output {
             Ok(document) => {
-                let buffer = typst::export::pdf(&document);
-                Ok(buffer.into_iter().collect::<Binary<_>>())
+                match typst_pdf::pdf(&document, &PdfOptions::default()) {
+                    Ok(buffer) => Ok(buffer.into_iter().collect::<Binary<_>>()),
+                    Err(errors) => {
+                        println!("{:?}", errors);
+                        Err(PhpException::new(
+                            get_error_message(&world, &self.body.as_ref().unwrap(), &warnings),
+                            8,
+                            ext_php_rs::zend::ce::exception(),
+                        ))
+                    }
+                }
             }
             Err(errors) => {
+                println!("{:?}", errors);
                 Err(PhpException::new(
-                    get_error_message(&world, &self.body.as_ref().unwrap(), &errors),
+                    get_error_message(&world, &self.body.as_ref().unwrap(), &warnings),
                     8,
                     ext_php_rs::zend::ce::exception(),
                 ))
@@ -456,13 +463,8 @@ impl Typst {
         else {
             self.fonts.push(path);
             Ok(())
+            // Err(PhpException::default(String::from("sdf")))
         }
-    }
-
-    fn system_fonts(&self) -> Vec<String> {
-        PHPWorld::new(self).book().families().map(|(family, _info)|
-            String::from(family)
-        ).collect()
     }
 }
 

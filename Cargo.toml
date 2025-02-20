@@ -9,9 +9,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-ext-php-rs = "0.10.1"
-typst = { git = "https://github.com/typst/typst" }
-typst-library = { git = "https://github.com/typst/typst" }
+ext-php-rs = "0.13.1"
+typst = { git = "https://github.com/typst/typst", tag = "v0.13.0" }
+typst-library = { git = "https://github.com/typst/typst", tag = "v0.13.0" }
+typst-pdf = { git = "https://github.com/typst/typst", tag = "v0.13.0" }
 comemo = "*"
 csv = "*"
 once_cell = "*"

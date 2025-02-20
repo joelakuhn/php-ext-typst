@@ -2,9 +2,7 @@
    not exposed by the typst library. */
 
 use std::path::{ Path, PathBuf };
-use std::fs::File;
-use typst::font::{ Font, FontBook, FontInfo };
-use once_cell::unsync::OnceCell;
+use typst::text::{ FontBook, FontInfo };
 use memmap2::Mmap;
 use walkdir::WalkDir;
 
@@ -12,7 +10,6 @@ use walkdir::WalkDir;
 pub struct FontSlot {
     pub path: PathBuf,
     pub index: u32,
-    pub font: OnceCell<Option<Font>>,
 }
 
 /// Searches for fonts.
@@ -88,14 +85,13 @@ impl FontSearcher {
     /// Index the fonts in the file at the given path.
     pub fn search_file(&mut self, path: impl AsRef<Path>) {
         let path = path.as_ref();
-        if let Ok(file) = File::open(path) {
+        if let Ok(file) = std::fs::File::open(path) {
             if let Ok(mmap) = unsafe { Mmap::map(&file) } {
                 for (i, info) in FontInfo::iter(&mmap).enumerate() {
                     self.book.push(info);
                     self.fonts.push(FontSlot {
                         path: path.into(),
                         index: i as u32,
-                        font: OnceCell::new(),
                     });
                 }
             }
