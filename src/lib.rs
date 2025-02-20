@@ -454,16 +454,27 @@ impl Typst {
     }
 
     fn register_font(&mut self, path: String) -> PhpResult<()> {
-        if !path.starts_with("./") {
-            Err(PhpException::default(String::from("Path must be relative.")))
-        }
-        else if path.contains("..") {
+        if path.contains("..") {
             Err(PhpException::default(String::from("Path attempts to traverse parent.")))
         }
-        else {
+        else if path.starts_with("./") {
             self.fonts.push(path);
             Ok(())
-            // Err(PhpException::default(String::from("sdf")))
+        }
+        else {
+            let cwd = match std::env::current_dir() {
+                Ok(cwd) => String::from(cwd.to_str().unwrap()),
+                Err(_) => {
+                    return Err(PhpException::default(String::from("Could not determin open_basedir.")));
+                }
+            };
+            if path.starts_with(&cwd) {
+                self.fonts.push(path);
+                Ok(())
+            }
+            else {
+                Err(PhpException::default(String::from("Path must be relative or within the open_basedir.")))
+            }
         }
     }
 }
