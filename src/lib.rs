@@ -7,7 +7,7 @@ use ext_php_rs::flags::DataType;
 use typst::ecow::EcoVec;
 use typst::Library;
 // use typst::eval::{ Library, Datetime };
-use typst::diag::{ FileError, FileResult, SourceDiagnostic, Warned };
+use typst::diag::{ FileError, FileResult, SourceDiagnostic };
 use typst::visualize::{Luma, Rgb};
 use typst::syntax::{ FileId, Source, Span, VirtualPath };
 use typst::text::{ Font, FontBook };
@@ -93,7 +93,7 @@ impl World for PHPWorld {
         //     Err(FileError::AccessDenied)
         // }
         // else {
-        
+
             let data = read(path.vpath().as_rooted_path()).unwrap();
             let bytes : Bytes = Bytes::new(data);
             Ok(bytes)
@@ -272,55 +272,57 @@ fn csv_to_typst(csv: &String, delimiter: u8, use_headers: bool) -> Value {
 
 // DIAGNOSTICS
 
-fn get_error_message(_world: &dyn World, _body: &str, errors: &EcoVec<SourceDiagnostic>) -> String {
+fn get_error_message(_world: &PHPWorld, body: &str, errors: &EcoVec<SourceDiagnostic>) -> String {
     let mut full_message = String::from("");
     let mut first = true;
     for error in errors {
         if first { first = false }
         else { full_message.push_str("\n"); }
 
-        full_message.push_str(&error.message);
+        full_message.push_str(&String::from(error.message.to_owned()));
 
-        // let range = error.(world);
-        // let body_bytes = body.as_bytes();
+        let range = error.span.range();
+        if range.is_some() {
+            let range = range.unwrap();
+            let body_bytes = body.as_bytes();
 
-        // let mut line_number = 1;
-        // for b in body_bytes[0..range.start].iter() {
-        //     if *b == 0x0A {
-        //         line_number += 1
-        //     }
-        // }
+            let mut line_number = 1;
+            for b in body_bytes[0..range.start].iter() {
+                if *b == 0x0A {
+                    line_number += 1
+                }
+            }
 
-        // full_message.push_str(&format!("Typst error on line {}: ", line_number));
-        // full_message.push_str(&String::from(error.message.to_owned()));
+            full_message.push_str(&format!("Typst error on line {}: ", line_number));
 
-        // let mut start = range.start;
-        // let mut end = range.end;
-        // if start > 0 && body_bytes[start] == 0x0A {
-        //     start -= 1
-        // }
-        // while body_bytes[start] != 0x0A {
-        //     if start == 0 { break; }
-        //     start -= 1;
-        // }
-        // if start == 0x0A { start += 1 }
-        // if end < body_bytes.len() && body_bytes[end] == 0x0A {
-        //     end += 1;
-        // }
-        // while end < body_bytes.len() && body_bytes[end] != 0x0A {
-        //     end += 1;
-        // }
-        // if end == 0x0A { end -= 1 }
+            let mut start = range.start;
+            let mut end = range.end;
+            if start > 0 && body_bytes[start] == 0x0A {
+                start -= 1
+            }
+            while body_bytes[start] != 0x0A {
+                if start == 0 { break; }
+                start -= 1;
+            }
+            if start == 0x0A { start += 1 }
+            if end < body_bytes.len() && body_bytes[end] == 0x0A {
+                end += 1;
+            }
+            while end < body_bytes.len() && body_bytes[end] != 0x0A {
+                end += 1;
+            }
+            if end == 0x0A { end -= 1 }
 
 
-        // match String::from_utf8(body_bytes[start..end].into()) {
-        //     Ok(code) => {
-        //         full_message.push_str("\n");
-        //         full_message.push_str(&code);
+            match String::from_utf8(body_bytes[start..end].into()) {
+                Ok(code) => {
+                    full_message.push_str("\n");
+                    full_message.push_str(&code);
 
-        //     }
-        //     _ => {},
-        // }
+                }
+                _ => {},
+            }
+        }
     }
     return full_message;
 }
@@ -415,15 +417,15 @@ impl Typst {
             return Err(PhpException::default(String::from("No body for typst compiler")));
         }
 
-        let Warned { output, warnings } = typst::compile(&world);
+        let warned_output = typst::compile(&world);
+        let output = warned_output.output;
         match output {
             Ok(document) => {
                 match typst_pdf::pdf(&document, &PdfOptions::default()) {
                     Ok(buffer) => Ok(buffer.into_iter().collect::<Binary<_>>()),
                     Err(errors) => {
-                        println!("{:?}", errors);
                         Err(PhpException::new(
-                            get_error_message(&world, &self.body.as_ref().unwrap(), &warnings),
+                            get_error_message(&world, &self.body.as_ref().unwrap(), &errors),
                             8,
                             ext_php_rs::zend::ce::exception(),
                         ))
@@ -431,9 +433,8 @@ impl Typst {
                 }
             }
             Err(errors) => {
-                println!("{:?}", errors);
                 Err(PhpException::new(
-                    get_error_message(&world, &self.body.as_ref().unwrap(), &warnings),
+                    get_error_message(&world, &self.body.as_ref().unwrap(), &errors),
                     8,
                     ext_php_rs::zend::ce::exception(),
                 ))
